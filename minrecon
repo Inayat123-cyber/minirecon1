@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# MiniReconX - Lightweight Bug Bounty Recon Script
+# Author: Inayat Hussain (https://github.com/inayatbughunter)
+# Version: 1.0
+
+# BANNER
+banner() {
+  echo "=============================================="
+  echo "          🔍 MiniReconX by Inayat Hussain       "
+  echo "      Lightweight Recon for Bug Bounty Hunting  "
+  echo "=============================================="
+}
+
+banner
+
+# DOMAIN INPUT
+if [ -z "$1" ]; then
+  read -p "[?] Enter target domain (e.g. kayak.com): " domain
+else
+  domain=$1
+fi
+
+output="${domain}_recon"
+mkdir -p $output
+
+echo "[+] Starting recon on $domain"
+echo "[+] Output will be saved in $output/"
+
+# STEP 1: Subdomain enumeration
+echo "[+] Finding subdomains using Assetfinder & Subfinder..."
+assetfinder --subs-only $domain | tee $output/subs_raw.txt
+subfinder -d $domain -silent >> $output/subs_raw.txt
+cat $output/subs_raw.txt | sort -u > $output/subdomains.txt
+
+# STEP 2: Check live hosts
+echo "[+] Checking which subdomains are alive with httpx..."
+cat $output/subdomains.txt | httpx -silent > $output/live.txt
+
+# STEP 3: Nuclei light scan
+echo "[+] Running nuclei scan (exposures & misconfig only)..."
+nuclei -l $output/live.txt -t nuclei-templates/exposures/ -t nuclei-templates/misconfiguration/ -o $output/nuclei.txt
+
+# STEP 4: Dalfox XSS check
+echo "[+] Checking for basic XSS with dalfox..."
+cat $output/live.txt | dalfox pipe --skip-bav -o $output/dalfox.txt
+
+# STEP 5: Google Dorks
+echo "[+] Preparing Google dorks..."
+echo "site:$domain ext:env | ext:log | ext:sql | ext:json" > $output/dorks.txt
+
+# STEP 6: GitHub Dorks
+echo "[+] Preparing GitHub search URL..."
+echo "https://github.com/search?q=$domain&type=Code" > $output/github.txt
+
+echo "[✔] Recon complete! All data saved in: $output/"
+
